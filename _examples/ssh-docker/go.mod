@@ -4,7 +4,7 @@ go 1.26.1
 
 require (
 	eye.dragonsecurity.io/ssh v0.0.0
-	github.com/docker/docker v28.3.3+incompatible
+	github.com/docker/docker v28.4.0+incompatible
 )
 
 require (
