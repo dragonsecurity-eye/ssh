@@ -32,7 +32,7 @@ func (c *serverConn) Read(b []byte) (n int, err error) {
 		c.updateDeadline()
 	}
 	n, err = c.Conn.Read(b)
-	if _, isNetErr := err.(net.Error); isNetErr && c.closeCanceler != nil {
+	if _, isNetErr := errors.AsType[net.Error](err); isNetErr && c.closeCanceler != nil {
 		c.closeCanceler()
 	}
 	return
@@ -60,5 +60,7 @@ func (c *serverConn) updateDeadline() {
 		}
 	}
 
-	c.Conn.SetDeadline(deadline)
+	if err := c.Conn.SetDeadline(deadline); err != nil && c.closeCanceler != nil {
+		c.closeCanceler()
+	}
 }

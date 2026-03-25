@@ -3,7 +3,6 @@ package ssh
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -11,18 +10,30 @@ import (
 	gossh "golang.org/x/crypto/ssh"
 )
 
-// ErrServerClosed is returned by the Server's Serve, ListenAndServe,
-// and ListenAndServeTLS methods after a call to Shutdown or Close.
-var ErrServerClosed = errors.New("ssh: Server closed")
+var (
+	// ErrServerClosed is returned by the Server's Serve, ListenAndServe,
+	// and ListenAndServeTLS methods after a call to Shutdown or Close.
+	ErrServerClosed = errors.New("ssh: Server closed")
 
+	// ErrNoAuthConfigured is returned when no authentication handlers are set
+	// and NoClientAuth is not explicitly enabled.
+	ErrNoAuthConfigured = errors.New("ssh: no authentication configured; set an auth handler or explicitly enable NoClientAuth")
+
+	// ErrPermissionDenied is returned by authentication callbacks when access is denied.
+	ErrPermissionDenied = errors.New("ssh: permission denied")
+)
+
+// SubsystemHandler is a callback for handling named subsystems.
 type SubsystemHandler func(s Session)
 
 var DefaultSubsystemHandlers = map[string]SubsystemHandler{}
 
+// RequestHandler is a callback for handling server-level SSH requests.
 type RequestHandler func(ctx Context, srv *Server, req *gossh.Request) (ok bool, payload []byte)
 
 var DefaultRequestHandlers = map[string]RequestHandler{}
 
+// ChannelHandler is a callback for handling SSH channel opens.
 type ChannelHandler func(srv *Server, conn *gossh.ServerConn, newChan gossh.NewChannel, ctx Context)
 
 var DefaultChannelHandlers = map[string]ChannelHandler{
@@ -30,8 +41,9 @@ var DefaultChannelHandlers = map[string]ChannelHandler{
 }
 
 // Server defines parameters for running an SSH server. The zero value for
-// Server is a valid configuration. When both PasswordHandler and
-// PublicKeyHandler are nil, no client authentication is performed.
+// Server is a valid configuration. When no authentication handler is set,
+// NoClientAuth must be explicitly set to true, otherwise Serve returns
+// ErrNoAuthConfigured.
 type Server struct {
 	Addr        string   // TCP address to listen on, ":22" if empty
 	Handler     Handler  // handler to invoke, ssh.DefaultHandler if nil
@@ -39,6 +51,7 @@ type Server struct {
 	Version     string   // server version to be sent before the initial handshake
 	Banner      string   // server banner
 
+	NoClientAuth                  bool                          // explicitly allow connections without authentication
 	BannerHandler                 BannerHandler                 // server banner handler, overrides Banner
 	KeyboardInteractiveHandler    KeyboardInteractiveHandler    // keyboard-interactive authentication handler
 	PasswordHandler               PasswordHandler               // password authentication handler
@@ -49,6 +62,7 @@ type Server struct {
 	ReversePortForwardingCallback ReversePortForwardingCallback // callback for allowing reverse port forwarding, denies all if nil
 	ServerConfigCallback          ServerConfigCallback          // callback for configuring detailed SSH options
 	SessionRequestCallback        SessionRequestCallback        // callback for allowing or denying SSH sessions
+	AgentForwardingCallback       AgentForwardingCallback       // callback for allowing agent forwarding, denies all if nil
 
 	ConnectionFailedCallback ConnectionFailedCallback // callback to report connection failures
 
@@ -129,7 +143,7 @@ func (srv *Server) config(ctx Context) *gossh.ServerConfig {
 	for _, signer := range srv.HostSigners {
 		config.AddHostKey(signer)
 	}
-	if srv.PasswordHandler == nil && srv.PublicKeyHandler == nil && srv.KeyboardInteractiveHandler == nil {
+	if srv.NoClientAuth {
 		config.NoClientAuth = true
 	}
 	if srv.Version != "" {
@@ -150,7 +164,7 @@ func (srv *Server) config(ctx Context) *gossh.ServerConfig {
 		config.PasswordCallback = func(conn gossh.ConnMetadata, password []byte) (*gossh.Permissions, error) {
 			applyConnMetadata(ctx, conn)
 			if ok := srv.PasswordHandler(ctx, string(password)); !ok {
-				return ctx.Permissions().Permissions, fmt.Errorf("permission denied")
+				return ctx.Permissions().Permissions, ErrPermissionDenied
 			}
 			return ctx.Permissions().Permissions, nil
 		}
@@ -159,7 +173,7 @@ func (srv *Server) config(ctx Context) *gossh.ServerConfig {
 		config.PublicKeyCallback = func(conn gossh.ConnMetadata, key gossh.PublicKey) (*gossh.Permissions, error) {
 			applyConnMetadata(ctx, conn)
 			if ok := srv.PublicKeyHandler(ctx, key); !ok {
-				return ctx.Permissions().Permissions, fmt.Errorf("permission denied")
+				return ctx.Permissions().Permissions, ErrPermissionDenied
 			}
 			ctx.SetValue(ContextKeyPublicKey, key)
 			return ctx.Permissions().Permissions, nil
@@ -169,7 +183,7 @@ func (srv *Server) config(ctx Context) *gossh.ServerConfig {
 		config.KeyboardInteractiveCallback = func(conn gossh.ConnMetadata, challenger gossh.KeyboardInteractiveChallenge) (*gossh.Permissions, error) {
 			applyConnMetadata(ctx, conn)
 			if ok := srv.KeyboardInteractiveHandler(ctx, challenger); !ok {
-				return ctx.Permissions().Permissions, fmt.Errorf("permission denied")
+				return ctx.Permissions().Permissions, ErrPermissionDenied
 			}
 			return ctx.Permissions().Permissions, nil
 		}
@@ -214,15 +228,22 @@ func (srv *Server) Shutdown(ctx context.Context) error {
 	srv.closeDoneChanLocked()
 	srv.mu.Unlock()
 
-	finished := make(chan struct{}, 1)
+	finished := make(chan struct{})
 	go func() {
 		srv.listenerWg.Wait()
 		srv.connWg.Wait()
-		finished <- struct{}{}
+		close(finished)
 	}()
 
 	select {
 	case <-ctx.Done():
+		// Force-close remaining connections so the goroutine above can exit.
+		srv.mu.Lock()
+		for c := range srv.conns {
+			c.Close()
+		}
+		srv.mu.Unlock()
+		<-finished
 		return ctx.Err()
 	case <-finished:
 		return lnerr
@@ -243,6 +264,9 @@ func (srv *Server) Serve(l net.Listener) error {
 	if srv.Handler == nil {
 		srv.Handler = DefaultHandler
 	}
+	if srv.PasswordHandler == nil && srv.PublicKeyHandler == nil && srv.KeyboardInteractiveHandler == nil && !srv.NoClientAuth {
+		return ErrNoAuthConfigured
+	}
 	var tempDelay time.Duration
 
 	srv.trackListener(l, true)
@@ -255,7 +279,7 @@ func (srv *Server) Serve(l net.Listener) error {
 				return ErrServerClosed
 			default:
 			}
-			if ne, ok := e.(net.Error); ok && ne.Temporary() {
+			if ne, ok := e.(net.Error); ok && ne.Timeout() {
 				if tempDelay == 0 {
 					tempDelay = 5 * time.Millisecond
 				} else {
@@ -310,7 +334,6 @@ func (srv *Server) HandleConn(newConn net.Conn) {
 
 	ctx.SetValue(ContextKeyConn, sshConn)
 	applyConnMetadata(ctx, sshConn)
-	//go gossh.DiscardRequests(reqs)
 	go srv.handleRequests(ctx, reqs)
 	for ch := range chans {
 		handler := srv.ChannelHandlers[ch.ChannelType()]
@@ -335,8 +358,6 @@ func (srv *Server) handleRequests(ctx Context, in <-chan *gossh.Request) {
 			req.Reply(false, nil)
 			continue
 		}
-		/*reqCtx, cancel := context.WithCancel(ctx)
-		  defer cancel() */
 		ret, payload := handler(ctx, srv, req)
 		req.Reply(ret, payload)
 	}
@@ -363,33 +384,23 @@ func (srv *Server) ListenAndServe() error {
 func (srv *Server) AddHostKey(key Signer) {
 	srv.mu.Lock()
 	defer srv.mu.Unlock()
+	srv.addHostKeyLocked(key)
+}
 
-	// these are later added via AddHostKey on ServerConfig, which performs the
-	// check for one of every algorithm.
-
-	// This check is based on the AddHostKey method from the x/crypto/ssh
-	// library. This allows us to only keep one active key for each type on a
-	// server at once. So, if you're dynamically updating keys at runtime, this
-	// list will not keep growing.
+func (srv *Server) addHostKeyLocked(key Signer) {
 	for i, k := range srv.HostSigners {
 		if k.PublicKey().Type() == key.PublicKey().Type() {
 			srv.HostSigners[i] = key
 			return
 		}
 	}
-
 	srv.HostSigners = append(srv.HostSigners, key)
 }
 
 // SetOption runs a functional option against the server.
 func (srv *Server) SetOption(option Option) error {
-	// NOTE: there is a potential race here for any option that doesn't call an
-	// internal method. We can't actually lock here because if something calls
-	// (as an example) AddHostKey, it will deadlock.
-
-	//srv.mu.Lock()
-	//defer srv.mu.Unlock()
-
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
 	return option(srv)
 }
 

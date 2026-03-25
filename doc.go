@@ -14,13 +14,23 @@ handler is usually nil, which means to use DefaultHandler. Handle sets DefaultHa
 	    io.WriteString(s, "Hello world\n")
 	})
 
-	log.Fatal(ssh.ListenAndServe(":2222", nil))
+	log.Fatal(ssh.ListenAndServe(":2222", nil,
+	    ssh.PasswordAuth(func(ctx ssh.Context, pass string) bool {
+	        return pass == "secret"
+	    }),
+	))
 
-If you don't specify a host key, it will generate one every time. This is convenient
-except you'll have to deal with clients being confused that the host key is different.
-It's a better idea to generate or point to an existing key on your system:
+At least one authentication handler must be configured, or NoClientAuth must be
+explicitly set to true on the Server. Without this, Serve returns ErrNoAuthConfigured.
 
-	log.Fatal(ssh.ListenAndServe(":2222", nil, ssh.HostKeyFile("/Users/progrium/.ssh/id_rsa")))
+If you don't specify a host key, it will generate an Ed25519 key every time. This is
+convenient except you'll have to deal with clients being confused that the host key is
+different. It's a better idea to generate or point to an existing key on your system:
+
+	log.Fatal(ssh.ListenAndServe(":2222", nil,
+	    ssh.HostKeyFile("/Users/progrium/.ssh/id_ed25519"),
+	    ssh.PasswordAuth(authHandler),
+	))
 
 Although all options have functional option helpers, another way to control the
 server's behavior is by creating a custom Server:
@@ -39,7 +49,7 @@ variables, requesting PTY, and changing window size. These requests are
 processed, responded to, and any relevant state is updated. This state is then
 exposed to you via the Session interface.
 
-The one big feature missing from the Session abstraction is signals. This was
-started but not completed. Pull Requests welcome!
+The Session abstraction supports basic signal forwarding via the Signals method.
+Terminal modes are not yet supported.
 */
 package ssh

@@ -28,7 +28,7 @@ type localForwardChannelData struct {
 func DirectTCPIPHandler(srv *Server, conn *gossh.ServerConn, newChan gossh.NewChannel, ctx Context) {
 	d := localForwardChannelData{}
 	if err := gossh.Unmarshal(newChan.ExtraData(), &d); err != nil {
-		newChan.Reject(gossh.ConnectionFailed, "error parsing forward data: "+err.Error())
+		newChan.Reject(gossh.ConnectionFailed, "port forwarding request denied")
 		return
 	}
 
@@ -42,7 +42,7 @@ func DirectTCPIPHandler(srv *Server, conn *gossh.ServerConn, newChan gossh.NewCh
 	var dialer net.Dialer
 	dconn, err := dialer.DialContext(ctx, "tcp", dest)
 	if err != nil {
-		newChan.Reject(gossh.ConnectionFailed, err.Error())
+		newChan.Reject(gossh.ConnectionFailed, "port forwarding request denied")
 		return
 	}
 
@@ -53,16 +53,23 @@ func DirectTCPIPHandler(srv *Server, conn *gossh.ServerConn, newChan gossh.NewCh
 	}
 	go gossh.DiscardRequests(reqs)
 
+	var wg sync.WaitGroup
+	wg.Add(2)
 	go func() {
-		defer ch.Close()
-		defer dconn.Close()
+		defer wg.Done()
 		io.Copy(ch, dconn)
+		ch.CloseWrite()
 	}()
 	go func() {
-		defer ch.Close()
-		defer dconn.Close()
+		defer wg.Done()
 		io.Copy(dconn, ch)
+		if tc, ok := dconn.(*net.TCPConn); ok {
+			tc.CloseWrite()
+		}
 	}()
+	wg.Wait()
+	ch.Close()
+	dconn.Close()
 }
 
 type remoteForwardRequest struct {
@@ -105,7 +112,6 @@ func (h *ForwardedTCPHandler) HandleSSHRequest(ctx Context, srv *Server, req *go
 	case "tcpip-forward":
 		var reqPayload remoteForwardRequest
 		if err := gossh.Unmarshal(req.Payload, &reqPayload); err != nil {
-			// TODO: log parse failure
 			return false, []byte{}
 		}
 		if srv.ReversePortForwardingCallback == nil || !srv.ReversePortForwardingCallback(ctx, reqPayload.BindAddr, reqPayload.BindPort) {
@@ -114,7 +120,6 @@ func (h *ForwardedTCPHandler) HandleSSHRequest(ctx Context, srv *Server, req *go
 		addr := net.JoinHostPort(reqPayload.BindAddr, strconv.Itoa(int(reqPayload.BindPort)))
 		ln, err := net.Listen("tcp", addr)
 		if err != nil {
-			// TODO: log listen failure
 			return false, []byte{}
 		}
 		_, destPortStr, _ := net.SplitHostPort(ln.Addr().String())
@@ -135,11 +140,10 @@ func (h *ForwardedTCPHandler) HandleSSHRequest(ctx Context, srv *Server, req *go
 			for {
 				c, err := ln.Accept()
 				if err != nil {
-					// TODO: log accept failure
 					break
 				}
-				originAddr, orignPortStr, _ := net.SplitHostPort(c.RemoteAddr().String())
-				originPort, _ := strconv.Atoi(orignPortStr)
+				originAddr, originPortStr, _ := net.SplitHostPort(c.RemoteAddr().String())
+				originPort, _ := strconv.Atoi(originPortStr)
 				payload := gossh.Marshal(&remoteForwardChannelData{
 					DestAddr:   reqPayload.BindAddr,
 					DestPort:   uint32(destPort),
@@ -149,22 +153,24 @@ func (h *ForwardedTCPHandler) HandleSSHRequest(ctx Context, srv *Server, req *go
 				go func() {
 					ch, reqs, err := conn.OpenChannel(forwardedTCPChannelType, payload)
 					if err != nil {
-						// TODO: log failure to open channel
 						log.Println(err)
 						c.Close()
 						return
 					}
 					go gossh.DiscardRequests(reqs)
+					var wg sync.WaitGroup
+					wg.Add(2)
 					go func() {
-						defer ch.Close()
-						defer c.Close()
+						defer wg.Done()
 						io.Copy(ch, c)
 					}()
 					go func() {
-						defer ch.Close()
-						defer c.Close()
+						defer wg.Done()
 						io.Copy(c, ch)
 					}()
+					wg.Wait()
+					ch.Close()
+					c.Close()
 				}()
 			}
 			h.Lock()
@@ -176,7 +182,6 @@ func (h *ForwardedTCPHandler) HandleSSHRequest(ctx Context, srv *Server, req *go
 	case "cancel-tcpip-forward":
 		var reqPayload remoteForwardCancelRequest
 		if err := gossh.Unmarshal(req.Payload, &reqPayload); err != nil {
-			// TODO: log parse failure
 			return false, []byte{}
 		}
 		addr := net.JoinHostPort(reqPayload.BindAddr, strconv.Itoa(int(reqPayload.BindPort)))

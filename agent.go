@@ -34,7 +34,8 @@ func AgentRequested(sess Session) bool {
 }
 
 // NewAgentListener sets up a temporary Unix socket that can be communicated
-// to the session environment and used for forwarding connections.
+// to the session environment and used for forwarding connections. The returned
+// listener cleans up its temporary directory when closed.
 func NewAgentListener() (net.Listener, error) {
 	dir, err := os.MkdirTemp("", agentTempDir)
 	if err != nil {
@@ -42,14 +43,27 @@ func NewAgentListener() (net.Listener, error) {
 	}
 	l, err := net.Listen("unix", path.Join(dir, agentListenFile))
 	if err != nil {
+		os.RemoveAll(dir)
 		return nil, err
 	}
-	return l, nil
+	return &agentListener{Listener: l, dir: dir}, nil
+}
+
+// agentListener wraps a net.Listener to clean up the temp directory on Close.
+type agentListener struct {
+	net.Listener
+	dir string
+}
+
+func (l *agentListener) Close() error {
+	err := l.Listener.Close()
+	os.RemoveAll(l.dir)
+	return err
 }
 
 // ForwardAgentConnections takes connections from a listener to proxy into the
 // session on the OpenSSH channel for agent connections. It blocks and services
-// connections until the listener stop accepting.
+// connections until the listener stops accepting.
 func ForwardAgentConnections(l net.Listener, s Session) {
 	sshConn := s.Context().Value(ContextKeyConn).(gossh.Conn)
 	for {

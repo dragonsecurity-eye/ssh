@@ -71,6 +71,10 @@ type ServerConfigCallback func(ctx Context) *gossh.ServerConfig
 // Please note: the net.Conn is likely to be closed at this point
 type ConnectionFailedCallback func(conn net.Conn, err error)
 
+// AgentForwardingCallback is a hook for allowing agent forwarding.
+// If nil, agent forwarding is denied.
+type AgentForwardingCallback func(ctx Context) bool
+
 // Window represents the size of a PTY window.
 type Window struct {
 	Width  int

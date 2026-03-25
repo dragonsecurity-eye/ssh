@@ -36,7 +36,7 @@ func HostKeyFile(filepath string) Option {
 			return err
 		}
 
-		srv.AddHostKey(signer)
+		srv.addHostKeyLocked(signer)
 
 		return nil
 	}
@@ -58,7 +58,7 @@ func HostKeyPEM(bytes []byte) Option {
 			return err
 		}
 
-		srv.AddHostKey(signer)
+		srv.addHostKeyLocked(signer)
 
 		return nil
 	}

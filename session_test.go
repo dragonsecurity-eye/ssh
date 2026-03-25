@@ -15,13 +15,15 @@ func (srv *Server) serveOnce(l net.Listener) error {
 	if err := srv.ensureHostSigner(); err != nil {
 		return err
 	}
+	if srv.PasswordHandler == nil && srv.PublicKeyHandler == nil && srv.KeyboardInteractiveHandler == nil {
+		srv.NoClientAuth = true
+	}
 	conn, e := l.Accept()
 	if e != nil {
 		return e
 	}
-	srv.ChannelHandlers = map[string]ChannelHandler{
-		"session":      DefaultSessionHandler,
-		"direct-tcpip": DirectTCPIPHandler,
+	if srv.ChannelHandlers["direct-tcpip"] == nil {
+		srv.ChannelHandlers["direct-tcpip"] = DirectTCPIPHandler
 	}
 	srv.HandleConn(conn)
 	return nil

@@ -1,15 +1,15 @@
 package ssh
 
 import (
+	"crypto/ed25519"
 	"crypto/rand"
-	"crypto/rsa"
 	"encoding/binary"
 
 	"golang.org/x/crypto/ssh"
 )
 
 func generateSigner() (ssh.Signer, error) {
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	_, key, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		return nil, err
 	}

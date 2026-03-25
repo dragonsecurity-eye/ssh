@@ -10,7 +10,11 @@ import (
 func ExampleListenAndServe() {
 	ssh.ListenAndServe(":2222", func(s ssh.Session) {
 		io.WriteString(s, "Hello world\n")
-	})
+	},
+		ssh.PasswordAuth(func(ctx ssh.Context, pass string) bool {
+			return pass == "secret"
+		}),
+	)
 }
 
 func ExamplePasswordAuth() {
@@ -22,7 +26,12 @@ func ExamplePasswordAuth() {
 }
 
 func ExampleNoPty() {
-	ssh.ListenAndServe(":2222", nil, ssh.NoPty())
+	ssh.ListenAndServe(":2222", nil,
+		ssh.NoPty(),
+		ssh.PasswordAuth(func(ctx ssh.Context, pass string) bool {
+			return pass == "secret"
+		}),
+	)
 }
 
 func ExamplePublicKeyAuth() {
@@ -36,5 +45,10 @@ func ExamplePublicKeyAuth() {
 }
 
 func ExampleHostKeyFile() {
-	ssh.ListenAndServe(":2222", nil, ssh.HostKeyFile("/path/to/host/key"))
+	ssh.ListenAndServe(":2222", nil,
+		ssh.HostKeyFile("/path/to/host/key"),
+		ssh.PasswordAuth(func(ctx ssh.Context, pass string) bool {
+			return pass == "secret"
+		}),
+	)
 }

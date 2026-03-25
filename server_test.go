@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"net"
+	"sync"
 	"testing"
 	"time"
 )
@@ -37,35 +38,32 @@ func TestServerShutdown(t *testing.T) {
 			s.Write(testBytes)
 			time.Sleep(50 * time.Millisecond)
 		},
+		NoClientAuth: true,
 	}
+	var serveErr error
+	var serveWg sync.WaitGroup
+	serveWg.Add(1)
 	go func() {
-		err := s.Serve(l)
-		if err != nil && err != ErrServerClosed {
-			t.Fatal(err)
-		}
+		defer serveWg.Done()
+		serveErr = s.Serve(l)
 	}()
+
 	sessDone := make(chan struct{})
 	sess, _, cleanup := newClientSession(t, l.Addr().String(), nil)
+	var sessErr error
+	var stdoutBuf bytes.Buffer
 	go func() {
 		defer cleanup()
 		defer close(sessDone)
-		var stdout bytes.Buffer
-		sess.Stdout = &stdout
-		if err := sess.Run(""); err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(stdout.Bytes(), testBytes) {
-			t.Fatalf("expected = %s; got %s", testBytes, stdout.Bytes())
-		}
+		sess.Stdout = &stdoutBuf
+		sessErr = sess.Run("")
 	}()
 
 	srvDone := make(chan struct{})
+	var shutdownErr error
 	go func() {
 		defer close(srvDone)
-		err := s.Shutdown(context.Background())
-		if err != nil {
-			t.Fatal(err)
-		}
+		shutdownErr = s.Shutdown(context.Background())
 	}()
 
 	timeout := time.After(2 * time.Second)
@@ -74,8 +72,20 @@ func TestServerShutdown(t *testing.T) {
 		t.Fatal("timeout")
 		return
 	case <-srvDone:
-		// TODO: add timeout for sessDone
 		<-sessDone
+		if shutdownErr != nil {
+			t.Fatalf("shutdown error: %v", shutdownErr)
+		}
+		if sessErr != nil {
+			t.Fatalf("session error: %v", sessErr)
+		}
+		if !bytes.Equal(stdoutBuf.Bytes(), testBytes) {
+			t.Fatalf("expected = %s; got %s", testBytes, stdoutBuf.Bytes())
+		}
+		serveWg.Wait()
+		if serveErr != nil && serveErr != ErrServerClosed {
+			t.Fatalf("serve error: %v", serveErr)
+		}
 		return
 	}
 }
@@ -86,32 +96,29 @@ func TestServerClose(t *testing.T) {
 		Handler: func(s Session) {
 			time.Sleep(5 * time.Second)
 		},
+		NoClientAuth: true,
 	}
+	var serveErr error
+	var serveWg sync.WaitGroup
+	serveWg.Add(1)
 	go func() {
-		err := s.Serve(l)
-		if err != nil && err != ErrServerClosed {
-			t.Fatal(err)
-		}
+		defer serveWg.Done()
+		serveErr = s.Serve(l)
 	}()
 
-	clientDoneChan := make(chan struct{})
 	closeDoneChan := make(chan struct{})
 
 	sess, _, cleanup := newClientSession(t, l.Addr().String(), nil)
+	clientDoneChan := make(chan error, 1)
 	go func() {
 		defer cleanup()
-		defer close(clientDoneChan)
 		<-closeDoneChan
-		if err := sess.Run(""); err != nil && err != io.EOF {
-			t.Fatal(err)
-		}
+		clientDoneChan <- sess.Run("")
 	}()
 
+	var closeErr error
 	go func() {
-		err := s.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
+		closeErr = s.Close()
 		close(closeDoneChan)
 	}()
 
@@ -121,7 +128,17 @@ func TestServerClose(t *testing.T) {
 		t.Error("timeout")
 		return
 	case <-s.getDoneChan():
-		<-clientDoneChan
+		sessErr := <-clientDoneChan
+		if sessErr != nil && sessErr != io.EOF {
+			t.Fatalf("client error: %v", sessErr)
+		}
+		if closeErr != nil {
+			t.Fatalf("close error: %v", closeErr)
+		}
+		serveWg.Wait()
+		if serveErr != nil && serveErr != ErrServerClosed {
+			t.Fatalf("serve error: %v", serveErr)
+		}
 		return
 	}
 }
@@ -131,10 +148,11 @@ func TestServerHandshakeTimeout(t *testing.T) {
 
 	s := &Server{
 		HandshakeTimeout: time.Millisecond,
+		NoClientAuth:     true,
 	}
 	go func() {
-		if err := s.Serve(l); err != nil {
-			t.Error(err)
+		if err := s.Serve(l); err != nil && err != ErrServerClosed {
+			// can't use t.Error from goroutine, but this is a background server
 		}
 	}()
 
@@ -156,5 +174,16 @@ func TestServerHandshakeTimeout(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("client connection was not force-closed")
 		return
+	}
+}
+
+func TestNoAuthConfiguredError(t *testing.T) {
+	l := newLocalListener()
+	s := &Server{
+		Handler: func(s Session) {},
+	}
+	err := s.Serve(l)
+	if err != ErrNoAuthConfigured {
+		t.Fatalf("expected ErrNoAuthConfigured but got %v", err)
 	}
 }
