@@ -60,11 +60,9 @@ var (
 // Context is a package specific context interface. It exposes connection
 // metadata and allows new values to be easily written to it. It's used in
 // authentication handlers and callbacks, and its underlying context.Context is
-// exposed on Session in the session Handler. A connection-scoped lock is also
-// embedded in the context to make it easier to limit operations per-connection.
+// exposed on Session in the session Handler.
 type Context interface {
 	context.Context
-	sync.Locker
 
 	// User returns the username used when establishing the SSH connection.
 	User() string

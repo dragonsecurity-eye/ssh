@@ -50,11 +50,14 @@ func TestContextSetAndGetValue(t *testing.T) {
 	}
 }
 
-func TestContextLock(t *testing.T) {
+func TestContextInternalMutex(t *testing.T) {
 	ctx, cancel := newContext(nil)
 	defer cancel()
 
-	// Should not deadlock
-	ctx.Lock()
-	ctx.Unlock()
+	// The internal mutex should not deadlock on concurrent SetValue
+	ctx.SetValue("a", 1)
+	ctx.SetValue("b", 2)
+	if ctx.Value("a") != 1 || ctx.Value("b") != 2 {
+		t.Fatal("expected values to be set")
+	}
 }
