@@ -1,6 +1,18 @@
 # DragonEye SSH
 
+[![CI](https://github.com/dragonsecurity-eye/ssh/actions/workflows/ci.yml/badge.svg)](https://github.com/dragonsecurity-eye/ssh/actions/workflows/ci.yml)
+[![Security](https://github.com/dragonsecurity-eye/ssh/actions/workflows/security.yml/badge.svg)](https://github.com/dragonsecurity-eye/ssh/actions/workflows/security.yml)
+[![Go Reference](https://pkg.go.dev/badge/eye.dragonsecurity.io/ssh.svg)](https://pkg.go.dev/eye.dragonsecurity.io/ssh)
+
 A high-level Go library for building SSH servers, inspired by the `net/http` API.
+
+## Installation
+
+```bash
+go get eye.dragonsecurity.io/ssh
+```
+
+Requires Go 1.26.1 or later.
 
 ## Quick Start
 
@@ -25,6 +37,10 @@ func main() {
         }),
     ))
 }
+```
+
+```bash
+ssh -p 2222 localhost  # password: secret
 ```
 
 ## Authentication
@@ -259,15 +275,6 @@ ctx.Permissions()    // auth permissions
 ctx.SetValue(k, v)   // store custom values
 ```
 
-## Breaking Changes
-
-If upgrading from an earlier version, be aware of the following:
-
-- **Authentication is now required**: Servers no longer silently fall back to `NoClientAuth`. Set `NoClientAuth: true` explicitly, or configure an auth handler.
-- **Agent forwarding is denied by default**: Previously accepted unconditionally. Set `AgentForwardingCallback` to allow it.
-- **`Context` no longer embeds `sync.Locker`**: The `Lock()`/`Unlock()` methods are no longer exposed on the `Context` interface. Use `SetValue()` for connection-scoped state.
-- **`ErrPermissionDenied`**: Auth callbacks now return the sentinel `ErrPermissionDenied` instead of `fmt.Errorf("permission denied")`.
-
 ## Examples
 
 Working examples are in the [`_examples`](_examples/) directory:
@@ -282,6 +289,17 @@ Working examples are in the [`_examples`](_examples/) directory:
 | [ssh-sftpserver](_examples/ssh-sftpserver/) | SFTP subsystem server |
 | [ssh-timeouts](_examples/ssh-timeouts/) | Idle and max connection timeouts |
 | [ssh-docker](_examples/ssh-docker/) | Docker container execution over SSH |
+
+## Breaking Changes
+
+If upgrading from an earlier version, be aware of the following:
+
+- **Authentication is now required**: Servers no longer silently fall back to `NoClientAuth`. Set `NoClientAuth: true` explicitly, or configure an auth handler.
+- **Agent forwarding is denied by default**: Previously accepted unconditionally. Set `AgentForwardingCallback` to allow it.
+- **`Context` no longer embeds `sync.Locker`**: The `Lock()`/`Unlock()` methods are no longer exposed on the `Context` interface. Use `SetValue()` for connection-scoped state.
+- **`ErrPermissionDenied`**: Auth callbacks now return the sentinel `ErrPermissionDenied` instead of `fmt.Errorf("permission denied")`.
+
+See [CHANGELOG.md](CHANGELOG.md) for full details.
 
 ## Security Notes
 

@@ -2,6 +2,9 @@
 
 All notable changes to this project will be documented in this file.
 
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
 ## [Unreleased]
 
 ### Security
@@ -28,7 +31,6 @@ All notable changes to this project will be documented in this file.
 - **`gossh.Unmarshal` errors**: All SSH request payload unmarshaling now checks for errors and rejects malformed payloads
 - **Context accessor panics**: `User()`, `SessionID()`, `ClientVersion()`, `ServerVersion()`, `LocalAddr()`, and `Permissions()` now use safe comma-ok type assertions instead of panicking on nil values
 - **`break` handler lock ordering**: `req.Reply` now called after mutex unlock
-- **Ineffective break in context test**: Fixed `break` that only exited `select` instead of goroutine
 
 ### Changed
 
@@ -47,5 +49,9 @@ All notable changes to this project will be documented in this file.
 - Comprehensive test suite (60 tests, 77% coverage)
 - `README.md` with full API documentation
 - `CHANGELOG.md`
-- `CONTRIBUTING.md`
+- `CONTRIBUTING.md` with development, testing, CI/CD, and release instructions
 - Examples for all major features (simple, pty, publickey, agent forwarding, remote forwarding, sftp, timeouts, docker)
+- GitHub Actions CI workflow (build, vet, race-detected tests, coverage, example verification)
+- GitHub Actions security workflow (weekly `govulncheck`, dependency verification)
+- GitHub Actions release workflow with immutability enforcement
+- Tag protection ruleset preventing deletion or modification of `v*` tags

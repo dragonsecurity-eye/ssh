@@ -3,10 +3,12 @@
 ## Development Setup
 
 ```bash
-git clone <repo-url>
+git clone git@github.com:dragonsecurity-eye/ssh.git
 cd ssh
 go mod download
 ```
+
+Requires Go 1.26.1 or later.
 
 ## Running Tests
 
@@ -14,7 +16,7 @@ go mod download
 # Run all tests
 go test ./...
 
-# Run with race detector
+# Run with race detector (required before submitting)
 go test -race ./...
 
 # Run with coverage
@@ -76,13 +78,61 @@ When contributing, keep these in mind:
 - Protect shared state with mutexes; use the race detector to verify
 - Agent forwarding and port forwarding should be denied by default
 
+## CI/CD
+
+All pull requests are validated by GitHub Actions:
+
+- **CI**: build, vet, race-detected tests, coverage, and example compilation
+- **Security**: `govulncheck` for known vulnerabilities and `go mod verify` for dependency integrity
+
+CI must pass before merging. See [`.github/workflows/`](.github/workflows/) for workflow definitions.
+
+## Releasing
+
+Releases are immutable. Tags matching `v*` cannot be deleted, updated, or force-pushed.
+
+To create a release:
+
+```bash
+# Tag the commit
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The [release workflow](.github/workflows/release.yml) triggers automatically:
+
+1. Verifies the release does not already exist (immutability check)
+2. Builds the module
+3. Runs the full test suite with race detector
+4. Creates a GitHub release with auto-generated release notes
+
+For pre-releases:
+
+```bash
+git tag v0.1.0-rc.1
+git push origin v0.1.0-rc.1
+```
+
+If a release needs a fix, bump the version (`v0.1.1`) rather than re-tagging.
+
+### Version Conventions
+
+Follow [Go module versioning](https://go.dev/doc/modules/version-numbers):
+
+- `v0.x.y` - initial development, API may change
+- `v1.x.y` - stable API, backward-compatible changes only
+- Patch (`v1.0.x`) - bug fixes
+- Minor (`v1.x.0`) - new features, backward-compatible
+- Major (`v2.0.0`) - breaking changes (requires new module path)
+
 ## Submitting Changes
 
 1. Fork the repository
-2. Create a feature branch
+2. Create a feature branch from `main`
 3. Make your changes with tests
 4. Ensure `go vet` and `go test -race` pass
-5. Submit a pull request
+5. Submit a pull request against `main`
+6. CI must pass before merge
 
 ## License
 
