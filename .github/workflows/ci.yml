@@ -17,7 +17,7 @@ jobs:
       matrix:
         go-version: ["1.26", "1.25"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
       - uses: actions/setup-go@v5
         with:
@@ -45,7 +45,7 @@ jobs:
 
       - name: Upload coverage
         if: matrix.go-version == '1.26'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: coverage
           path: coverage.out
@@ -54,7 +54,7 @@ jobs:
     name: Build examples
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
       - uses: actions/setup-go@v5
         with:
