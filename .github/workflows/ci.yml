@@ -14,18 +14,14 @@ env:
 
 jobs:
   test:
-    name: Test (Go ${{ matrix.go-version }})
+    name: Test
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        go-version: ["1.26", "1.25"]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
-          go-version: ${{ matrix.go-version }}
+          go-version: "1.26"
 
       - name: Download dependencies
         run: go mod download
@@ -45,11 +41,9 @@ jobs:
         run: go test -race -count=1 -timeout 120s ./...
 
       - name: Test with coverage
-        if: matrix.go-version == '1.26'
         run: go test -coverprofile=coverage.out -timeout 120s ./...
 
       - name: Upload coverage
-        if: matrix.go-version == '1.26'
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         with:
           name: coverage
