@@ -1,6 +1,6 @@
 module ssh-sftpserver
 
-go 1.26.1
+go 1.26.2
 
 replace eye.dragonsecurity.io/ssh => ../..
 

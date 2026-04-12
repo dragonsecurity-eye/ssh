@@ -1,6 +1,6 @@
 module ssh-docker
 
-go 1.26.1
+go 1.26.2
 
 require (
 	eye.dragonsecurity.io/ssh v0.0.0
