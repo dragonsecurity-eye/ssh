@@ -4,7 +4,7 @@ go 1.26.2
 
 require (
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be
-	golang.org/x/crypto v0.49.0
+	golang.org/x/crypto v0.50.0
 )
 
-require golang.org/x/sys v0.42.0 // indirect
+require golang.org/x/sys v0.43.0 // indirect
