@@ -1,6 +1,6 @@
 module ssh-publickey
 
-go 1.26.2
+go 1.26.3
 
 replace eye.dragonsecurity.io/ssh => ../..
 
