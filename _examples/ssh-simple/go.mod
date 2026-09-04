@@ -1,6 +1,6 @@
 module ssh-simple
 
-go 1.26.3
+go 1.26.8
 
 replace eye.dragonsecurity.io/ssh => ../..
 
