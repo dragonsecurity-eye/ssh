@@ -1,6 +1,6 @@
 module eye.dragonsecurity.io/ssh
 
-go 1.26.3
+go 1.27.1
 
 require (
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be
